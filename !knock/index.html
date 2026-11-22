@@ -81,11 +81,12 @@ svg{width:22px;height:22px;flex:none}
 .empty{text-align:center;color:var(--mut);padding:50px 24px;line-height:1.9}
 .empty b{display:block;color:var(--text);font-size:16px;margin-bottom:4px}
 /* stars */
-.stars{direction:ltr;display:inline-flex;line-height:1;font-size:12px}
-.st{position:relative;color:#333;display:inline-block}
-.st b{position:absolute;left:0;top:0;overflow:hidden;color:var(--g);font-weight:400;white-space:nowrap}
+.stars{direction:ltr;display:inline-flex;align-items:center;line-height:0;font-size:12px;height:1em;flex:none}
+.sx{position:relative;color:#333;display:block;width:1em;height:1em;flex:none}
+.sx svg{display:block;width:1em!important;height:1em!important;max-width:none;fill:currentColor!important;stroke:none!important}
+.sx b{position:absolute;left:0;top:0;height:1em;overflow:hidden;color:var(--g);font-weight:400}
 .pick{gap:2px;padding:6px 0}
-.pick .st{cursor:pointer;padding:0 1px}
+.pick .sx{cursor:pointer;margin:0 1px}
 /* rows */
 .row{display:flex;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid #161616}
 .row .thumb{width:46px;aspect-ratio:2/3;border-radius:6px;overflow:hidden;flex:none;background:var(--card2)}
@@ -786,7 +787,7 @@ input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),
 .st-row.red{color:#ff453a}
 #fg.grid{grid-template-columns:repeat(4,1fr);gap:10px 6px;padding:6px 10px}
 #fg .lstars{gap:2px 4px;flex-wrap:wrap;margin-top:3px;min-height:0}
-#fg .lstars .stars{display:block;line-height:12px;height:12px;white-space:nowrap}
+#fg .lstars .stars{height:1em;white-space:nowrap}
 #fg .lstars .hv,#fg .lstars .ri{height:12px;align-items:center}
 #fg .lstars svg{width:10px;height:10px}
 #fg .lstars .stars{font-size:9.5px}
@@ -987,7 +988,8 @@ function toast(m){}
 const iu=(sz,p)=>/^https?:/.test(p)?p:IMG+sz+p;
 const posterImg=(p,t,sz)=>p?`<img loading="lazy" src="${iu(sz||'w342',p)}" alt="${esc(t)}">`:`<div class="noimg">${esc(t)}</div>`;
 const pc=it=>`<a class="pc" href="#/${it.type}/${it.id}" data-key="${it.key}">${posterImg(it.poster,it.title)}<span class="seen">${I.check}</span></a>`;
-const starSpans=r=>[0,1,2,3,4].map(i=>`<span class="st"><b style="width:${Math.max(0,Math.min(2,r-i*2))*50}%">★</b>★</span>`).join('');
+const STAR='<svg viewBox="0 0 24 24"><path d="M12 1.8l3.2 6.9 7.5.9-5.5 5.2 1.4 7.5L12 18.5l-6.6 3.8 1.4-7.5L1.3 9.6l7.5-.9z"/></svg>';
+const starSpans=r=>[0,1,2,3,4].map(i=>`<span class="sx">${STAR}<b style="width:${Math.max(0,Math.min(2,r-i*2))*50}%">${STAR}</b></span>`).join('');
 const starsHTML=r=>`<span class="stars">${starSpans(r)}</span>`;
 function picker(val,onChange,size){
   const d=document.createElement('span');
@@ -996,7 +998,7 @@ function picker(val,onChange,size){
   const paint=()=>{d.innerHTML=starSpans(v);};
   paint();
   d.addEventListener('click',e=>{
-    const st=e.target.closest('.st');if(!st)return;
+    const st=e.target.closest('.sx');if(!st)return;
     const i=[...d.children].indexOf(st),r=st.getBoundingClientRect();
     let n=i*2+((e.clientX-r.left)<r.width/2?1:2);
     if(n===v)n=0;
