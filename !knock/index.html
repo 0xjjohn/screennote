@@ -286,6 +286,23 @@ svg{width:22px;height:22px;flex:none}
 .rbars i{display:block;width:100%;background:#3a3d3b;border-radius:2px 2px 0 0}
 .r5{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
 .r5 b{font-size:28px;font-weight:300;color:#8f8f8f;line-height:1}
+#rblk{cursor:pointer;-webkit-tap-highlight-color:transparent}
+#rblk .lab span{margin-left:6px;font-weight:400;letter-spacing:.4px}
+.rrw{flex:none;display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid #1a1a1a;color:inherit;text-decoration:none}
+.rrw>div{flex:1;min-width:0}
+.rrw b{display:block;font-size:15px;font-weight:600}
+.rrw small{display:block;font-size:12px;color:var(--mut);margin-top:3px;font-weight:400}
+.rrw .rvv{font-size:24px;font-weight:300;direction:ltr;white-space:nowrap}
+.rrw .rvv em{font-style:normal;font-size:12px;color:var(--mut);margin-left:2px}
+.rrw .rvv.g{color:var(--g)}
+.rrw svg{width:16px;height:16px;color:var(--mut);flex:none}
+.rkey{flex:none;padding:16px}
+.rkey p{margin:0 0 10px;font-size:13px;color:var(--mut);line-height:1.5}
+.rkr{display:flex;gap:8px}
+.rkr input{flex:1;min-width:0;background:#0c0c0c;border:1px solid #262626;border-radius:0;color:#fff;padding:11px 12px;font-size:14px;outline:none}
+.rkr input:focus{border-color:var(--g)}
+.rkr button{background:var(--g);color:#000;border:0;border-radius:0;padding:0 16px;font-weight:600;font-size:14px}
+.rkey a{display:inline-block;margin-top:10px;font-size:12px;color:var(--g);text-decoration:none}
 /* options (sheet rows) */
 .sb{overflow-y:auto;-webkit-overflow-scrolling:touch}
 .sheet.col{display:flex;flex-direction:column;overflow:hidden;max-height:88dvh}
@@ -1530,6 +1547,42 @@ async function openGenre(kind,g){
   more();
 }
 
+/* External ratings: Letterboxd (public page via CORS proxies, may fail), IMDb + Rotten Tomatoes (OMDb, needs a free key) */
+const rcGet=k=>{try{const o=JSON.parse(localStorage.getItem('kadr_rc')||'{}'),e=o[k];return e&&Date.now()-e.t<6048e5?e.v:null;}catch(_){return null;}};
+const rcSet=(k,v)=>{try{const o=JSON.parse(localStorage.getItem('kadr_rc')||'{}');o[k]={t:Date.now(),v};const ks=Object.keys(o);if(ks.length>150)ks.sort((a,b)=>o[a].t-o[b].t).slice(0,40).forEach(x=>delete o[x]);localStorage.setItem('kadr_rc',JSON.stringify(o));}catch(_){}};
+const omdbKey=()=>{try{return localStorage.getItem('kadr_omdb')||'';}catch(_){return '';}};
+const fmtCount=n=>n>=1e6?(n/1e6).toFixed(1).replace(/\.0$/,'')+'M':n>=1e3?(n/1e3).toFixed(n>=1e4?0:1).replace(/\.0$/,'')+'K':String(n);
+async function fetchTxt(url,ms){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms||9000);try{const r=await fetch(url,{signal:c.signal});if(!r.ok)throw new Error('http '+r.status);return await r.text();}finally{clearTimeout(t);}}
+const PROXIES=[u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),u=>'https://corsproxy.io/?'+encodeURIComponent(u)];
+async function getLetterboxd(tmdbId){
+  const ck='lb'+tmdbId,c=rcGet(ck);if(c)return c;
+  let html=null,px=null;
+  for(const f of PROXIES){try{const h=await fetchTxt(f('https://letterboxd.com/tmdb/'+tmdbId+'/'),10000);if(/ratingValue|twitter:data2/.test(h)){html=h;px=f;break;}}catch(_){}}
+  if(!html)throw new Error('Letterboxd unavailable');
+  const m=html.match(/name="twitter:data2"\s+content="([\d.]+) out of 5/)||html.match(/"ratingValue":\s*([\d.]+)/);
+  if(!m)throw new Error('No rating');
+  const n=html.match(/"ratingCount":\s*(\d+)/),u=html.match(/property="og:url"\s+content="([^"]+)"/)||html.match(/rel="canonical"\s+href="([^"]+)"/);
+  const v={avg:+m[1],n:n?+n[1]:0,url:u?u[1]:'https://letterboxd.com/tmdb/'+tmdbId+'/',hist:null};
+  const slug=(v.url.match(/\/film\/([^\/]+)/)||[])[1];
+  if(slug){
+    try{
+      const h=await fetchTxt(px('https://letterboxd.com/csi/film/'+slug+'/rating-histogram/'),9000);
+      const parts=h.split(/<li[^>]*rating-histogram-bar/).slice(1).map(x=>{const t=(x.match(/title="([^"]*)"/)||[])[1]||'';const k=t.match(/^\s*([\d,]+)/);return k?+k[1].replace(/,/g,''):0;});
+      if(parts.length===10){const mx=Math.max(...parts);if(mx>0)v.hist=parts.map(x=>x/mx);}
+    }catch(_){}
+  }
+  rcSet(ck,v);return v;
+}
+async function getOmdb(imdb){
+  const key=omdbKey();if(!key||!imdb)throw new Error('no key');
+  const ck='om'+imdb,c=rcGet(ck);if(c)return c;
+  const j=JSON.parse(await fetchTxt('https://www.omdbapi.com/?i='+encodeURIComponent(imdb)+'&apikey='+encodeURIComponent(key),9000));
+  if(j.Response==='False')throw new Error(j.Error||'OMDb error');
+  const rt=(j.Ratings||[]).find(r=>/Rotten/i.test(r.Source));
+  const v={imdb:j.imdbRating&&j.imdbRating!=='N/A'?+j.imdbRating:null,votes:j.imdbVotes&&j.imdbVotes!=='N/A'?+j.imdbVotes.replace(/,/g,''):0,rt:rt?parseInt(rt.Value,10):null};
+  rcSet(ck,v);return v;
+}
+const histBars=h=>h.map(v=>`<span><i style="height:${v<.04?0:Math.max(6,v*100)}%"></i></span>`).join('');
 /* Estimated distribution: TMDB gives only the mean and vote count, not per-score counts */
 function ratingDist(m){
   m=Math.min(9.7,Math.max(1.3,m||5));
@@ -1582,7 +1635,7 @@ async function renderTitle(el,kind,id){
   el.innerHTML=backBtn+spin;
   el.addEventListener('click',e=>{if(e.target.closest('[data-act="back"]'))goBack();});
   let d;
-  const app='credits,videos,similar,recommendations,keywords,watch/providers'+(kind==='movie'?',release_dates':'');
+  const app='credits,videos,similar,recommendations,keywords,watch/providers'+(kind==='movie'?',release_dates':',external_ids');
   try{d=await tmdb(`/${kind}/${id}`,{append_to_response:app,include_video_language:'en,ar,null'});}
   catch(e){el.innerHTML=backBtn+errBox(esc(e.message||''));return;}
   if(!d.overview&&(D.lang||'en-US')!=='en-US'){try{const en=await tmdb(`/${kind}/${id}`,{language:'en-US'});d.overview=en.overview;}catch(_){}}
@@ -1615,7 +1668,7 @@ async function renderTitle(el,kind,id){
     </div>
     ${d.tagline?`<p class="tag" dir="auto">${esc(d.tagline)}</p>`:''}
     <div class="ovw"><p class="ov cl4" dir="auto">${esc(d.overview||'No synopsis available.')}</p>${(d.overview||'').length>170?`<button class="odots" data-act="ov" aria-label="More"><i></i><i></i><i></i></button>`:''}</div>
-    ${d.vote_count?`<div class="blk rblk"><div class="lab">Ratings</div><div class="rh"><span class="rs1">★</span><div class="rbars">${ratingDist(va).map(v=>`<span><i style="height:${v<.04?0:Math.max(6,v*100)}%"></i></span>`).join('')}</div><div class="r5"><b>${(va/2).toFixed(1)}</b><span>★★★★★</span></div></div></div>`:''}
+    ${d.vote_count?`<div class="blk rblk" id="rblk" data-act="ratings" role="button" tabindex="0"><div class="lab">Ratings<span id="rcnt"></span></div><div class="rh"><span class="rs1">★</span><div class="rbars" id="rbars">${histBars(ratingDist(va))}</div><div class="r5"><b id="ravg">${(va/2).toFixed(1)}</b><span>★★★★★</span></div></div></div>`:''}
     <div class="ua"></div>`;
 
   /* ---- user actions ---- */
@@ -1873,6 +1926,54 @@ async function renderTitle(el,kind,id){
     else if(a==='editlog')openLog(it,{logId:b.dataset.id});
   });
   markSeen(el);
+
+  /* ---- external ratings (Letterboxd / IMDb / Rotten Tomatoes) ---- */
+  const RS={lb:null,lbS:kind==='movie'?'load':'na',om:null,omS:'na',draw:null,
+    imdb:d.imdb_id||(d.external_ids&&d.external_ids.imdb_id)||''};
+  const paintBlock=()=>{
+    const avg=$('#ravg',el);if(!avg||!RS.lb)return;
+    avg.textContent=RS.lb.avg.toFixed(1);
+    if(RS.lb.hist)$('#rbars',el).innerHTML=histBars(RS.lb.hist);
+    else $('#rbars',el).innerHTML=histBars(ratingDist(RS.lb.avg*2));
+    const c=$('#rcnt',el);if(c)c.textContent=RS.lb.n?'· '+fmtCount(RS.lb.n):'';
+  };
+  const loadOM=()=>{
+    if(!omdbKey()||!RS.imdb){RS.omS='na';return Promise.resolve();}
+    RS.omS='load';
+    return getOmdb(RS.imdb).then(v=>{RS.om=v;RS.omS='ok';},()=>{RS.omS='err';}).then(()=>{if(RS.draw)RS.draw();});
+  };
+  if(RS.lbS==='load')getLetterboxd(+id).then(v=>{RS.lb=v;RS.lbS='ok';paintBlock();},()=>{RS.lbS='err';}).then(()=>{if(RS.draw)RS.draw();});
+  loadOM();
+  const rtUrl='https://www.rottentomatoes.com/search?search='+encodeURIComponent(it.title||'');
+  const row=(name,val,unit,sub,href,g)=>`<a class="rrw" href="${href}" target="_blank" rel="noopener"><div><b>${name}</b><small>${sub}</small></div><span class="rvv${g?' g':''}">${val}${unit?`<em>${unit}</em>`:''}</span>${I.fwd}</a>`;
+  const openRatings=()=>{
+    const w=fullPage('Ratings','<div id="rrows"></div>');
+    RS.draw=()=>{
+      const box=$('#rrows',w);if(!box)return;
+      let h='';
+      if(kind==='movie'){
+        const lbUrl=RS.lb?RS.lb.url:'https://letterboxd.com/tmdb/'+id+'/';
+        h+=RS.lb?row('Letterboxd',RS.lb.avg.toFixed(2),'/ 5',RS.lb.n?fmtCount(RS.lb.n)+' ratings':'Average rating',lbUrl,1)
+          :row('Letterboxd',RS.lbS==='load'?'…':'—','',RS.lbS==='load'?'Loading…':'Couldn’t load — tap to open',lbUrl);
+      }
+      if(RS.om){
+        h+=row('IMDb',RS.om.imdb!=null?RS.om.imdb.toFixed(1):'—','/ 10',RS.om.votes?fmtCount(RS.om.votes)+' votes':'Rating',RS.imdb?'https://www.imdb.com/title/'+RS.imdb+'/':'https://www.imdb.com/find/?q='+encodeURIComponent(it.title||''),RS.om.imdb!=null);
+        h+=row('Rotten Tomatoes',RS.om.rt!=null?RS.om.rt+'%':'—','','Tomatometer',rtUrl,RS.om.rt!=null);
+      }else{
+        const why=!RS.imdb?'No IMDb id for this title':RS.omS==='load'?'Loading…':RS.omS==='err'?'Couldn’t load — check your key':'Add a free OMDb key below';
+        h+=row('IMDb','—','',why,RS.imdb?'https://www.imdb.com/title/'+RS.imdb+'/':'https://www.imdb.com/find/?q='+encodeURIComponent(it.title||''));
+        h+=row('Rotten Tomatoes','—','',why,rtUrl);
+      }
+      h+=row('TMDB',va.toFixed(1),'/ 10',fmtCount(d.vote_count||0)+' votes','https://www.themoviedb.org/'+kind+'/'+id,va>0);
+      if(!RS.om&&RS.imdb&&RS.omS!=='load')h+=`<div class="rkey"><p>IMDb and Rotten Tomatoes ratings come from OMDb. Paste a free API key once and it’s remembered on this device.</p><div class="rkr"><input id="okey" placeholder="OMDb API key" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(omdbKey())}"><button id="oks">Save</button></div><a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">Get a free key</a></div>`;
+      box.innerHTML=h;
+      const sb=$('#oks',box);
+      if(sb)sb.onclick=()=>{const k=$('#okey',box).value.trim();if(!k)return;try{localStorage.setItem('kadr_omdb',k);}catch(_){}RS.omS='load';RS.draw();loadOM();};
+    };
+    w._onclose=()=>{RS.draw=null;};
+    RS.draw();
+  };
+  el.addEventListener('click',e=>{if(e.target.closest('[data-act="ratings"]'))openRatings();});
 }
 
 /* ================= PERSON page ================= */
